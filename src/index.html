@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>RPA Recorder</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            text-align: center;
+        }
+
+        button {
+            font-size: 16px;
+            padding: 10px;
+            margin: 5px;
+            width: 120px;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>FlowRec</h1>
+
+    <div>
+        <button id="recordBtn">Record</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <button id="playBtn" disabled>Play</button>
+    </div>
+    <div style="margin-top:12px;">
+        <button id="saveBtn" disabled>Save</button>
+        <button id="loadBtn">Load</button>
+    </div>
+
+    <div id="status">Status: Idle</div>
+
+    <script>
+        const recordBtn = document.getElementById('recordBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const playBtn = document.getElementById('playBtn');
+        const statusDiv = document.getElementById('status');
+
+        let currentWorkflow = null;
+        let currentWorkflowPath = null;
+
+        recordBtn.addEventListener('click', async () => {
+            await window.electronAPI.startRecording();
+            statusDiv.textContent = 'Status: Recording...';
+            recordBtn.disabled = true;
+            stopBtn.disabled = false;
+            playBtn.disabled = true;
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            currentWorkflow = await window.electronAPI.stopRecording();
+            statusDiv.textContent = `Status: Stopped. Recorded ${currentWorkflow.steps.length} steps.`;
+            recordBtn.disabled = false;
+            stopBtn.disabled = true;
+            playBtn.disabled = false;
+            saveBtn.disabled = false;
+        });
+
+        playBtn.addEventListener('click', async () => {
+            if (!currentWorkflow) return alert('No workflow to play.');
+            statusDiv.textContent = 'Status: Playing...';
+            await window.electronAPI.playWorkflow(currentWorkflow);
+            statusDiv.textContent = 'Status: Playback finished.';
+        });
+
+        const saveBtn = document.getElementById('saveBtn');
+        const loadBtn = document.getElementById('loadBtn');
+
+        saveBtn.addEventListener('click', async () => {
+            if (!currentWorkflow) return alert('Nothing to save');
+            const path = await window.electronAPI.saveWorkflow(currentWorkflow);
+            if (path) {
+                currentWorkflowPath = path;
+                statusDiv.textContent = `Saved to ${path}`;
+            }
+        });
+
+        loadBtn.addEventListener('click', async () => {
+            const res = await window.electronAPI.loadWorkflow();
+            if (!res) return;
+            currentWorkflowPath = res.filePath;
+            currentWorkflow = res.data;
+            statusDiv.textContent = `Loaded ${currentWorkflow.steps?.length || 0} steps from file.`;
+            playBtn.disabled = false;
+            saveBtn.disabled = false;
+        });
+
+        // Show info emitted from player (e.g., image search failures)
+        window.electronAPI.onPlayerInfo((info) => {
+            if (info?.kind === 'image-search-failed') {
+                statusDiv.textContent = 'Image search failed. Falling back to coordinates.';
+            }
+        });
+    </script>
+</body>
+
+</html>
