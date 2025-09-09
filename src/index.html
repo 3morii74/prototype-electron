@@ -35,8 +35,21 @@
         <button id="playBtn" disabled>Play</button>
     </div>
     <div style="margin-top:12px;">
-        <button id="saveBtn" disabled>Save</button>
+        <button id="saveBtn" disabled>Save JSON</button>
+        <button id="saveXmlBtn" disabled>Save XML</button>
         <button id="loadBtn">Load</button>
+    </div>
+
+    <div style="margin-top:18px; text-align:left; max-width:900px; margin-left:auto; margin-right:auto;">
+        <h3>Activities</h3>
+        <div id="activities" style="border:1px solid #ddd; border-radius:6px; padding:10px; min-height:120px;">
+            <div id="emptyState" style="color:#888;">No activities yet. Record or load a workflow.</div>
+        </div>
+        <div style="margin-top:8px;">
+            <button id="moveUpBtn" disabled>Move Up</button>
+            <button id="moveDownBtn" disabled>Move Down</button>
+            <button id="deleteBtn" disabled>Delete</button>
+        </div>
     </div>
 
     <div id="status">Status: Idle</div>
@@ -49,6 +62,7 @@
 
         let currentWorkflow = null;
         let currentWorkflowPath = null;
+        let selectedIndex = -1;
 
         recordBtn.addEventListener('click', async () => {
             await window.electronAPI.startRecording();
@@ -60,11 +74,14 @@
 
         stopBtn.addEventListener('click', async () => {
             currentWorkflow = await window.electronAPI.stopRecording();
-            statusDiv.textContent = `Status: Stopped. Recorded ${currentWorkflow.steps.length} steps.`;
+            const count = getActivities(currentWorkflow).length;
+            statusDiv.textContent = `Status: Stopped. Recorded ${count} activities.`;
             recordBtn.disabled = false;
             stopBtn.disabled = true;
             playBtn.disabled = false;
             saveBtn.disabled = false;
+            saveXmlBtn.disabled = false;
+            renderActivities();
         });
 
         playBtn.addEventListener('click', async () => {
@@ -75,6 +92,7 @@
         });
 
         const saveBtn = document.getElementById('saveBtn');
+        const saveXmlBtn = document.getElementById('saveXmlBtn');
         const loadBtn = document.getElementById('loadBtn');
 
         saveBtn.addEventListener('click', async () => {
@@ -86,14 +104,26 @@
             }
         });
 
+        saveXmlBtn.addEventListener('click', async () => {
+            if (!currentWorkflow) return alert('Nothing to save');
+            const path = await window.electronAPI.saveWorkflowXml(currentWorkflow);
+            if (path) {
+                currentWorkflowPath = path;
+                statusDiv.textContent = `Saved to ${path}`;
+            }
+        });
+
         loadBtn.addEventListener('click', async () => {
             const res = await window.electronAPI.loadWorkflow();
             if (!res) return;
             currentWorkflowPath = res.filePath;
             currentWorkflow = res.data;
-            statusDiv.textContent = `Loaded ${currentWorkflow.steps?.length || 0} steps from file.`;
+            const count = getActivities(currentWorkflow).length;
+            statusDiv.textContent = `Loaded ${count} activities from file.`;
             playBtn.disabled = false;
             saveBtn.disabled = false;
+            saveXmlBtn.disabled = false;
+            renderActivities();
         });
 
         // Show info emitted from player (e.g., image search failures)
@@ -101,6 +131,112 @@
             if (info?.kind === 'image-search-failed') {
                 statusDiv.textContent = 'Image search failed. Falling back to coordinates.';
             }
+        });
+
+        function getActivities(workflow) {
+            if (!workflow) return [];
+            if (Array.isArray(workflow.steps)) return workflow.steps; // legacy
+            const seq = workflow?.mainSequence;
+            return Array.isArray(seq?.activities) ? seq.activities : [];
+        }
+
+        function setActivities(workflow, activities) {
+            if (Array.isArray(workflow.steps)) { // legacy
+                workflow.steps = activities;
+                return;
+            }
+            if (!workflow.mainSequence) workflow.mainSequence = { type: 'Sequence', name: 'Main Sequence', activities: [] };
+            workflow.mainSequence.activities = activities;
+        }
+
+        function toLegacySteps(workflow) {
+            const activities = getActivities(workflow);
+            return activities.map(a => {
+                if (a.type === 'Click') {
+                    const selArr = Array.isArray(a.properties?.selectors) ? a.properties.selectors : [];
+                    const imgSel = selArr.find(s => s.strategy === 'image');
+                    const coordSel = selArr.find(s => s.strategy === 'coordinates');
+                    return {
+                        type: 'click',
+                        delayMs: a.properties?.delayBefore || 0,
+                        targetAppTitle: a.properties?.windowInfo?.title || '',
+                        selectors: { imagePath: imgSel?.imagePath, coordinates: coordSel ? { x: coordSel.x, y: coordSel.y } : undefined },
+                        mouse: { button: a.properties?.button || 'left' }
+                    };
+                }
+                if (a.type === 'TypeInto') {
+                    return { type: 'key', delayMs: a.properties?.delayBefore || 0, text: a.properties?.text || '' };
+                }
+                return { type: 'delay', delayMs: a.properties?.delayBefore || 0 };
+            });
+        }
+
+        function renderActivities() {
+            const container = document.getElementById('activities');
+            container.innerHTML = '';
+            const activities = getActivities(currentWorkflow);
+            if (!activities.length) {
+                document.getElementById('emptyState').style.display = 'block';
+                document.getElementById('moveUpBtn').disabled = true;
+                document.getElementById('moveDownBtn').disabled = true;
+                document.getElementById('deleteBtn').disabled = true;
+                return;
+            }
+            document.getElementById('emptyState').style.display = 'none';
+            activities.forEach((act, idx) => {
+                const row = document.createElement('div');
+                row.textContent = `${idx + 1}. ${act.type} - ${act.name || ''}`;
+                row.style.padding = '6px 8px';
+                row.style.cursor = 'pointer';
+                row.style.borderBottom = '1px solid #eee';
+                row.addEventListener('click', () => { selectedIndex = idx; refreshSelection(); });
+                container.appendChild(row);
+            });
+            refreshSelection();
+        }
+
+        function refreshSelection() {
+            const container = document.getElementById('activities');
+            const children = container.children;
+            for (let i = 0; i < children.length; i++) {
+                const el = children[i];
+                el.style.background = (i === selectedIndex) ? '#e6f4ff' : 'transparent';
+            }
+            const activities = getActivities(currentWorkflow);
+            document.getElementById('moveUpBtn').disabled = !(selectedIndex > 0);
+            document.getElementById('moveDownBtn').disabled = !(selectedIndex >= 0 && selectedIndex < activities.length - 1);
+            document.getElementById('deleteBtn').disabled = !(selectedIndex >= 0);
+        }
+
+        document.getElementById('moveUpBtn').addEventListener('click', () => {
+            const activities = getActivities(currentWorkflow);
+            if (selectedIndex <= 0) return;
+            const tmp = activities[selectedIndex - 1];
+            activities[selectedIndex - 1] = activities[selectedIndex];
+            activities[selectedIndex] = tmp;
+            setActivities(currentWorkflow, activities);
+            selectedIndex = selectedIndex - 1;
+            renderActivities();
+        });
+
+        document.getElementById('moveDownBtn').addEventListener('click', () => {
+            const activities = getActivities(currentWorkflow);
+            if (selectedIndex < 0 || selectedIndex >= activities.length - 1) return;
+            const tmp = activities[selectedIndex + 1];
+            activities[selectedIndex + 1] = activities[selectedIndex];
+            activities[selectedIndex] = tmp;
+            setActivities(currentWorkflow, activities);
+            selectedIndex = selectedIndex + 1;
+            renderActivities();
+        });
+
+        document.getElementById('deleteBtn').addEventListener('click', () => {
+            const activities = getActivities(currentWorkflow);
+            if (selectedIndex < 0) return;
+            activities.splice(selectedIndex, 1);
+            setActivities(currentWorkflow, activities);
+            selectedIndex = -1;
+            renderActivities();
         });
     </script>
 </body>

@@ -1,21 +1,45 @@
 {
-  "name": "my-electron-app",
-  "version": "1.0.0",
-  "description": "",
+  "name": "rpa-studio",
+  "version": "2.0.0",
+  "description": "Professional RPA Studio - Cross-platform automation system",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "rebuild": "electron-rebuild -f -w uiohook-napi -w @nut-tree-fork/nut-js"
+    "rebuild": "electron-rebuild -f -w uiohook-napi -w @nut-tree-fork/nut-js",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "test": "jest"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["rpa", "automation", "workflow", "robotic-process-automation"],
+  "author": "RPA Studio Team",
+  "license": "MIT",
   "devDependencies": {
     "electron": "^38.0.0",
-    "electron-rebuild": "^3.2.9"
+    "electron-builder": "^24.0.0",
+    "electron-rebuild": "^3.2.9",
+    "jest": "^29.0.0"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",
-    "uiohook-napi": "^1.5.4"
+    "uiohook-napi": "^1.5.4",
+    "xml2js": "^0.6.2",
+    "uuid": "^9.0.0",
+    "winston": "^3.10.0",
+    "puppeteer": "^21.0.0",
+    "playwright": "^1.40.0",
+    "tesseract.js": "^5.0.0",
+    "sharp": "^0.33.0",
+    "jimp": "^0.22.10",
+    "moment": "^2.29.4",
+    "lodash": "^4.17.21",
+    "rxjs": "^7.8.1",
+    "monaco-editor": "^0.44.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-flow-renderer": "^10.3.17",
+    "antd": "^5.11.0",
+    "axios": "^1.6.0",
+    "csv-parser": "^3.0.0",
+    "xlsx": "^0.18.5"
   }
 }
